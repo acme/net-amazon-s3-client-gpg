@@ -196,7 +196,7 @@ __END__
 
 =head1 NAME
 
-Net::Amazon::S3::GPG - use GPG with Amazon S3 - Simple Storage Service
+Net::Amazon::S3::GPG - Use GPG with Amazon S3 - Simple Storage Service
 
 =head1 SYNOPSIS
 

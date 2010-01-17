@@ -1,5 +1,5 @@
 NAME
-    Net::Amazon::S3::GPG - use GPG with Amazon S3 - Simple Storage Service
+    Net::Amazon::S3::GPG - Use GPG with Amazon S3 - Simple Storage Service
 
 SYNOPSIS
       use Net::Amazon::S3;
@@ -26,9 +26,9 @@ SYNOPSIS
           gnupg_interface => $gnupg,
           passphrase      => $gpg_passphrase,
       );
-  
+
       # then can call $object->gpg_get, $object->gpg_get_filename,
-      # $object->gpg_put, $object->$gpg_put_filename on 
+      # $object->gpg_put, $object->$gpg_put_filename on
       # Net::Amazon::S3::Object objects.
 
 DESCRIPTION
