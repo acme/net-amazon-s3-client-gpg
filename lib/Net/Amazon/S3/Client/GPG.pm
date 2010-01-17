@@ -2,6 +2,7 @@ package Net::Amazon::S3::Client::GPG;
 use Moose;
 use MooseX::StrictConstructor;
 use Moose::Util::TypeConstraints;
+use Carp qw(croak);
 use Digest::MD5 qw(md5 md5_hex);
 use MIME::Base64;
 use Net::Amazon::S3;
@@ -42,13 +43,14 @@ sub encrypt {
         stdin  => $input,
         stdout => $output,
     );
-    my $pid = $gnupg->encrypt( handles => $handles );
+    my $pid = $gnupg->encrypt( handles => $handles )
+        || croak "Error encrypting: no pid!";
 
-    print $input $plaintext;
-    close $input;
+    $input->print($plaintext) || croak "Error printing the plaintext: $!";
+    $input->close || croak "Error closing filehandle: $!";
 
     my $ciphertext = join '', <$output>;
-    close $output;
+    $output->close || croak "Error closing filehandle: $!";
 
     waitpid $pid, 0;
     return $ciphertext;
@@ -81,19 +83,21 @@ sub decrypt {
     #  my $cipher_file = IO::File->new( 'encrypted.gpg' );
 
     # this sets up the communication
-    my $pid = $gnupg->decrypt( handles => $handles );
+    my $pid = $gnupg->decrypt( handles => $handles )
+        || croak "Error decrypting: no pid!";
 
     # This passes in the passphrase
-    print $passphrase_fh $self->passphrase;
-    close $passphrase_fh;
+    $passphrase_fh->print( $self->passphrase )
+        || croak "Error printing passphrase: $!";
+    $passphrase_fh->close || croak "Error closing passphrase: $!";
 
     # this passes in the plaintext
     #  print $input $_ while <$cipher_file>;
-    print $input $ciphertext;
+    $input->print($ciphertext) || croak "Error printing passphrase: $!";
 
     # this closes the communication channel,
     # indicating we are done
-    close $input;
+    $input->close || croak "Error closing input: $!";
 
     #  close $cipher_file;
 
@@ -102,9 +106,9 @@ sub decrypt {
     my $status_info  = join '', <$status_fh>;    # read the status info
 
     # clean up...
-    close $output;
-    close $error;
-    close $status_fh;
+    $output->close    || croak "Error closing output: $!";
+    $error->close     || croak "Error closing error: $!";
+    $status_fh->close || croak "Error closing status: $!";
 
     #warn $error_output;
     #warn $status_info;
