@@ -18,70 +18,16 @@ __PACKAGE__->meta->make_immutable;
 Net::Amazon::S3::Client::Object->meta->make_mutable();
 Net::Amazon::S3::Client::Object->meta->add_method(
     'gpg_get' => sub {
-        my $self = shift;
-        my $client = $self->client;
-        
-        my $http_request = Net::Amazon::S3::Request::GetObject->new(
-            s3     => $self->client->s3,
-            bucket => $self->bucket->name,
-            key    => $self->key,
-            method => 'GET',
-        )->http_request;
-
-        my $http_response = $client->_send_request($http_request);
-        my $content       = $http_response->content;
-
-        my $md5_hex = md5_hex($content);
-
-        if ( $self->etag ) {
-            confess 'Corrupted download' if $self->etag ne $md5_hex;
-        } else {
-            confess 'Corrupted download'
-                if $self->_etag($http_response) ne $md5_hex;
-        }
-        my $plaintext = $client->decrypt($content);
-        return $plaintext;
+        my $self       = shift;
+        my $ciphertext = $self->get;
+        return $self->client->decrypt($ciphertext);
     }
 );
 Net::Amazon::S3::Client::Object->meta->add_method(
     'gpg_put' => sub {
         my ( $self, $value ) = @_;
-        my $client = $self->client;
-
-        my $ciphertext = $client->encrypt($value);
-
-        my $md5        = md5($ciphertext);
-        my $md5_hex    = unpack( 'H*', $md5 );
-        my $md5_base64 = encode_base64($md5);
-        chomp $md5_base64;
-        
-        my $conf = {
-            'Content-MD5'    => $md5_base64,
-            'Content-Length' => length $ciphertext,
-            'Content-Type'   => $self->content_type,
-        };
-
-        if ( $self->expires ) {
-            $conf->{Expires}
-                = DateTime::Format::HTTP->format_datetime( $self->expires );
-        }
-
-        my $http_request = Net::Amazon::S3::Request::PutObject->new(
-            s3        => $self->client->s3,
-            bucket    => $self->bucket->name,
-            key       => $self->key,
-            value     => $ciphertext,
-            headers   => $conf,
-            acl_short => $self->acl_short,
-        )->http_request;
-
-        my $http_response = $self->client->_send_request($http_request);
-
-        confess 'Error uploading' if $http_response->code != 200;
-
-        my $etag = $self->_etag($http_response);
-
-        confess 'Corrupted upload' if $etag ne $md5_hex;
+        my $ciphertext = $self->client->encrypt($value);
+        return $self->put($ciphertext);
     }
 );
 Net::Amazon::S3::Client::Object->meta->make_immutable();
