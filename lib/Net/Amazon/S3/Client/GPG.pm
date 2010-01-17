@@ -2,8 +2,9 @@ package Net::Amazon::S3::Client::GPG;
 use Moose;
 use MooseX::StrictConstructor;
 use Moose::Util::TypeConstraints;
-use Carp qw(croak);
+use Carp qw(confess);
 use Digest::MD5 qw(md5 md5_hex);
+use File::Temp qw(tempfile);
 use MIME::Base64;
 use Net::Amazon::S3;
 use Net::Amazon::S3::Client;
@@ -19,46 +20,62 @@ __PACKAGE__->meta->make_immutable;
 Net::Amazon::S3::Client::Object->meta->make_mutable();
 Net::Amazon::S3::Client::Object->meta->add_method(
     'gpg_get' => sub {
-        my $self       = shift;
-        my $ciphertext = $self->get;
-        return $self->client->decrypt($ciphertext);
+        my $self = shift;
+        my ( $ciphertext_fh, $ciphertext_filename ) = tempfile();
+        $ciphertext_fh->close || confess "Error closing filehandle: $!";
+        $self->get_filename($ciphertext_filename);
+
+        my ( $tmp_plaintext_fh, $plaintext_filename ) = tempfile();
+        $tmp_plaintext_fh->close;
+
+        $self->client->decrypt( $ciphertext_filename, $plaintext_filename );
+
+        unlink($ciphertext_filename)
+            || confess "Error unlinking $ciphertext_filename: $!";
+
+        my $plaintext_fh = IO::File->new($plaintext_filename)
+            || confess "Error opening $plaintext_filename: $!";
+        my $plaintext;
+        until ( $plaintext_fh->eof ) {
+            my $line = $plaintext_fh->getline
+                || die "Error reading from plaintext: $!";
+            $plaintext .= $line;
+        }
+        $plaintext_fh->close;
+
+        unlink($plaintext_filename)
+            || confess "Error unlinking $plaintext_filename: $!";
+        return $plaintext;
     }
 );
 Net::Amazon::S3::Client::Object->meta->add_method(
     'gpg_put' => sub {
-        my ( $self, $value ) = @_;
-        my $ciphertext = $self->client->encrypt($value);
-        return $self->put($ciphertext);
+        my ( $self,         $plaintext )          = @_;
+        my ( $plaintext_fh, $plaintext_filename ) = tempfile();
+        $plaintext_fh->print($plaintext)
+            || confess "Error printing the value: $!";
+        $plaintext_fh->close || confess "Error closing filehandle: $!";
+
+        my $ciphertext_filename = $self->client->encrypt($plaintext_filename);
+        $self->put_filename($ciphertext_filename);
+
+        unlink($plaintext_filename)
+            || confess "Error unlinking $plaintext_filename: $!";
+        unlink($ciphertext_filename)
+            || confess "Error unlinking $ciphertext_filename: $!";
     }
 );
 Net::Amazon::S3::Client::Object->meta->make_immutable();
 
-sub encrypt {
-    my ( $self, $plaintext ) = @_;
-    my $gnupg = $self->gnupg_interface;
-
-    my $input   = IO::Handle->new();
-    my $output  = IO::Handle->new();
-    my $handles = GnuPG::Handles->new(
-        stdin  => $input,
-        stdout => $output,
-    );
-    my $pid = $gnupg->encrypt( handles => $handles )
-        || croak "Error encrypting: no pid!";
-
-    $input->print($plaintext) || croak "Error printing the plaintext: $!";
-    $input->close || croak "Error closing filehandle: $!";
-
-    my $ciphertext = join '', <$output>;
-    $output->close || croak "Error closing filehandle: $!";
-
-    waitpid $pid, 0;
-    return $ciphertext;
-}
-
 sub decrypt {
-    my ( $self, $ciphertext ) = @_;
+    my ( $self, $ciphertext_filename, $plaintext_filename ) = @_;
     my $gnupg = $self->gnupg_interface;
+
+    my $ciphertext_fh = IO::File->new($ciphertext_filename)
+        || confess "Error opening $ciphertext_filename: $!";
+
+    my $plaintext_fh = IO::File->new( $plaintext_filename, 'w' )
+        || confess "Error opening $plaintext_filename: $!";
 
     # This time we'll catch the standard error for our perusing
     # as well as passing in the passphrase manually
@@ -77,44 +94,79 @@ sub decrypt {
         status     => $status_fh,
     );
 
-    # this time we'll also demonstrate decrypting
-    # a file written to disk
-    # Make sure you "use IO::File" if you use this module!
-    #  my $cipher_file = IO::File->new( 'encrypted.gpg' );
-
     # this sets up the communication
     my $pid = $gnupg->decrypt( handles => $handles )
-        || croak "Error decrypting: no pid!";
+        || confess "Error decrypting: no pid!";
 
     # This passes in the passphrase
     $passphrase_fh->print( $self->passphrase )
-        || croak "Error printing passphrase: $!";
-    $passphrase_fh->close || croak "Error closing passphrase: $!";
+        || confess "Error printing passphrase: $!";
+    $passphrase_fh->close || confess "Error closing passphrase: $!";
 
-    # this passes in the plaintext
-    #  print $input $_ while <$cipher_file>;
-    $input->print($ciphertext) || croak "Error printing passphrase: $!";
+    until ( $ciphertext_fh->eof ) {
+        my $line = $ciphertext_fh->getline
+            || die "Error reading from ciphertext: $!";
+        $input->print($line) || confess "Error printing the ciphertext: $!";
+    }
 
-    # this closes the communication channel,
-    # indicating we are done
-    $input->close || croak "Error closing input: $!";
+    $input->close         || confess "Error closing input: $!";
+    $ciphertext_fh->close || confess "Error closing ciphertext: $!";
 
-    #  close $cipher_file;
+    until ( $output->eof ) {
+        my $line = $output->getline || die "Error reading from output: $!";
+        $plaintext_fh->print($line)
+            || confess "Error writing the plaintext: $!";
+    }
+    $output->close       || confess "Error closing output: $!";
+    $plaintext_fh->close || confess "Error closing plaintext: $!";
 
-    my $plaintext    = join '', <$output>;       # reading the output
     my $error_output = join '', <$error>;        # reading the error
     my $status_info  = join '', <$status_fh>;    # read the status info
 
     # clean up...
-    $output->close    || croak "Error closing output: $!";
-    $error->close     || croak "Error closing error: $!";
-    $status_fh->close || croak "Error closing status: $!";
+    $error->close     || confess "Error closing error: $!";
+    $status_fh->close || confess "Error closing status: $!";
 
     #warn $error_output;
     #warn $status_info;
 
     waitpid $pid, 0;    # clean up the finished GnuPG process
-    return $plaintext;
+}
+
+sub encrypt {
+    my ( $self, $plaintext_filename ) = @_;
+    my $gnupg = $self->gnupg_interface;
+
+    my $plaintext_fh = IO::File->new($plaintext_filename)
+        || confess "Error opening $plaintext_filename: $!";
+    my ( $ciphertext_fh, $ciphertext_filename ) = tempfile();
+
+    my $input   = IO::Handle->new();
+    my $output  = IO::Handle->new();
+    my $handles = GnuPG::Handles->new(
+        stdin  => $input,
+        stdout => $output,
+    );
+    my $pid = $gnupg->encrypt( handles => $handles )
+        || confess "Error encrypting: no pid!";
+
+    until ( $plaintext_fh->eof ) {
+        my $line = $plaintext_fh->getline
+            || die "Error reading from plaintext: $!";
+        $input->print($line) || confess "Error printing the plaintext: $!";
+    }
+
+    $input->close || confess "Error closing filehandle: $!";
+
+    until ( $output->eof ) {
+        my $line = $output->getline || die "Error reading from output: $!";
+        $ciphertext_fh->print($line)
+            || confess "Error writing the ciphertext: $!";
+    }
+    $output->close || confess "Error closing filehandle: $!";
+
+    waitpid $pid, 0;
+    return $ciphertext_filename;
 }
 
 1;
