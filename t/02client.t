@@ -12,7 +12,7 @@ use Test::Exception;
 unless ( $ENV{'AMAZON_S3_EXPENSIVE_TESTS'} ) {
     plan skip_all => 'Testing this module for real costs money.';
 } else {
-    plan tests => 17;
+    plan tests => 25;
 }
 
 use_ok('Net::Amazon::S3');
@@ -145,6 +145,75 @@ is( $bucket->object( key => 'this is the key' )->gpg_get,
 
 is( get( $object->uri ),
     undef, 'newly created object cannot be fetched by uri' );
+
+$object->delete;
+
+my $readme_size   = stat('README')->size;
+my $readme_md5hex = file_md5_hex('README');
+
+# upload a file with put_filename
+
+$object = $bucket->object( key => 'the readme' );
+$object->gpg_put_filename('README');
+
+@objects = ();
+$stream  = $bucket->list;
+until ( $stream->is_done ) {
+    foreach my $object ( $stream->items ) {
+        push @objects, $object;
+    }
+}
+
+is( @objects, 1, 'have newly uploaded object' );
+is( $objects[0]->key, 'the readme',
+    'newly uploaded object has the right key' );
+ok( $objects[0]->last_modified, 'newly created object has a last modified' );
+
+$object->delete;
+
+# upload a public object with put_filename
+
+$object = $bucket->object(
+    key       => 'the public readme',
+    acl_short => 'public-read'
+);
+$object->gpg_put_filename('README');
+$object->delete;
+
+# upload a file with put_filename with known md5hex and size
+
+$object = $bucket->object(
+    key => 'the new readme',
+
+    #   etag => $readme_md5hex,
+    #   size => $readme_size
+);
+$object->gpg_put_filename('README');
+
+@objects = ();
+$stream  = $bucket->list;
+until ( $stream->is_done ) {
+    foreach my $object ( $stream->items ) {
+        push @objects, $object;
+    }
+}
+
+is( @objects, 1, 'have newly uploaded object' );
+is( $objects[0]->key,
+    'the new readme',
+    'newly uploaded object has the right key'
+);
+ok( $objects[0]->last_modified, 'newly created object has a last modified' );
+
+# download an object with get_filename
+
+if ( -f 't/README' ) {
+    unlink('t/README') || die $!;
+}
+
+$object->gpg_get_filename('t/README');
+is( stat('t/README')->size,   $readme_size,   'download has right size' );
+is( file_md5_hex('t/README'), $readme_md5hex, 'download has right etag' );
 
 $object->delete;
 

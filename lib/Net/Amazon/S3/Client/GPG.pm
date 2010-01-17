@@ -49,8 +49,20 @@ Net::Amazon::S3::Client::Object->meta->add_method(
     }
 );
 Net::Amazon::S3::Client::Object->meta->add_method(
+    'gpg_get_filename' => sub {
+        my ( $self,          $plaintext_filename )  = @_;
+        my ( $ciphertext_fh, $ciphertext_filename ) = tempfile();
+        $ciphertext_fh->close;
+        $self->get_filename($ciphertext_filename);
+        $self->client->decrypt( $ciphertext_filename, $plaintext_filename );
+        unlink($ciphertext_filename)
+            || confess "Error unlinking $ciphertext_filename: $!";
+    }
+);
+Net::Amazon::S3::Client::Object->meta->add_method(
     'gpg_put' => sub {
-        my ( $self,         $plaintext )          = @_;
+        my ( $self, $plaintext ) = @_;
+
         my ( $plaintext_fh, $plaintext_filename ) = tempfile();
         $plaintext_fh->print($plaintext)
             || confess "Error printing the value: $!";
@@ -61,6 +73,15 @@ Net::Amazon::S3::Client::Object->meta->add_method(
 
         unlink($plaintext_filename)
             || confess "Error unlinking $plaintext_filename: $!";
+        unlink($ciphertext_filename)
+            || confess "Error unlinking $ciphertext_filename: $!";
+    }
+);
+Net::Amazon::S3::Client::Object->meta->add_method(
+    'gpg_put_filename' => sub {
+        my ( $self, $plaintext_filename ) = @_;
+        my $ciphertext_filename = $self->client->encrypt($plaintext_filename);
+        $self->put_filename($ciphertext_filename);
         unlink($ciphertext_filename)
             || confess "Error unlinking $ciphertext_filename: $!";
     }
@@ -172,3 +193,73 @@ sub encrypt {
 }
 
 1;
+
+__END__
+
+=head1 NAME
+
+Net::Amazon::S3::GPG - use GPG with Amazon S3 - Simple Storage Service
+
+=head1 SYNOPSIS
+
+  use Net::Amazon::S3;
+  my $aws_access_key_id     = 'fill me in';
+  my $aws_secret_access_key = 'fill me in too';
+  my $gpg_recipient         = 'fill@meintoo.com';
+  my $gpg_passphrase        = 'secret!';
+
+  my $s3 = Net::Amazon::S3->new(
+      aws_access_key_id     => $aws_access_key_id,
+      aws_secret_access_key => $aws_secret_access_key,
+      retry                 => 1,
+  );
+
+  my $gnupg = GnuPG::Interface->new();
+  $gnupg->options->hash_init(
+      armor            => 0,
+      recipients       => [$gpg_recipient],
+      meta_interactive => 0,
+  );
+
+  my $client = Net::Amazon::S3::Client::GPG->new(
+      s3              => $s3,
+      gnupg_interface => $gnupg,
+      passphrase      => $gpg_passphrase,
+  );
+
+  # then can call $object->gpg_get, $object->gpg_get_filename,
+  # $object->gpg_put, $object->$gpg_put_filename on
+  # Net::Amazon::S3::Object objects.
+
+=head1 DESCRIPTION
+
+L<Net::Amazon::S3> provides a simple interface to Amazon's Simple
+Storage Service. L<GnuPG::Interface> provides a Perl interface to
+GNU Privacy Guard, an implementation of the OpenPGP standard.
+L<Net::Amazon::S3> can use SSL so that data can not be intercepted
+while in transit over the internet, but Amazon recommends that
+"users can encrypt their data before it is uploaded to Amazon S3
+so that the data cannot be accessed or tampered with by
+unauthorized parties".
+
+This module adds methods to L<Net::Amazon::S3::Object> to get
+and put values and files while encrypting and decrypting them.
+
+=head1 AUTHOR
+
+Leon Brocard <acme@astray.com>.
+
+=head1 COPYRIGHT
+
+Copyright (C) 2010, Leon Brocard
+
+=head1 LICENSE
+
+This module is free software; you can redistribute it or modify it
+under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+L<Net::Amazon::S3>, L<Net::Amazon::S3::Client>,
+L<Net::Amazon::Client::Bucket>, L<Net::Amazon::S3::Client::Object>,
+L<GnuPG::Interface>.
