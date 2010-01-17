@@ -37,9 +37,9 @@ Net::Amazon::S3::Client::Object->meta->add_method(
             || confess "Error opening $plaintext_filename: $!";
         my $plaintext;
         until ( $plaintext_fh->eof ) {
-            my $line = $plaintext_fh->getline
-                || die "Error reading from plaintext: $!";
-            $plaintext .= $line;
+            $plaintext_fh->read( my $chunk, 4096 )
+                || confess "Error reading from plaintext: $!";
+            $plaintext .= $chunk;
         }
         $plaintext_fh->close;
 
@@ -104,17 +104,18 @@ sub decrypt {
     $passphrase_fh->close || confess "Error closing passphrase: $!";
 
     until ( $ciphertext_fh->eof ) {
-        my $line = $ciphertext_fh->getline
-            || die "Error reading from ciphertext: $!";
-        $input->print($line) || confess "Error printing the ciphertext: $!";
+        $ciphertext_fh->read( my $chunk, 4096 )
+            || confess "Error reading from ciphertext: $!";
+        $input->print($chunk) || confess "Error printing the ciphertext: $!";
     }
 
     $input->close         || confess "Error closing input: $!";
     $ciphertext_fh->close || confess "Error closing ciphertext: $!";
 
     until ( $output->eof ) {
-        my $line = $output->getline || die "Error reading from output: $!";
-        $plaintext_fh->print($line)
+        $output->read( my $chunk, 4096 )
+            || confess "Error reading from output: $!";
+        $plaintext_fh->print($chunk)
             || confess "Error writing the plaintext: $!";
     }
     $output->close       || confess "Error closing output: $!";
@@ -151,16 +152,17 @@ sub encrypt {
         || confess "Error encrypting: no pid!";
 
     until ( $plaintext_fh->eof ) {
-        my $line = $plaintext_fh->getline
-            || die "Error reading from plaintext: $!";
-        $input->print($line) || confess "Error printing the plaintext: $!";
+        $plaintext_fh->read( my $chunk, 4096 )
+            || confess "Error reading from plaintext: $!";
+        $input->print($chunk) || confess "Error printing the plaintext: $!";
     }
 
     $input->close || confess "Error closing filehandle: $!";
 
     until ( $output->eof ) {
-        my $line = $output->getline || die "Error reading from output: $!";
-        $ciphertext_fh->print($line)
+        $output->read( my $chunk, 4096 )
+            || confess "Error reading from output: $!";
+        $ciphertext_fh->print($chunk)
             || confess "Error writing the ciphertext: $!";
     }
     $output->close || confess "Error closing filehandle: $!";
