@@ -7,6 +7,9 @@ use File::Temp qw(tempfile);
 use Net::Amazon::S3;
 use Net::Amazon::S3::Client;
 use Net::Amazon::S3::Client::Object;
+
+our $VERSION = '0.33';
+
 extends 'Net::Amazon::S3::Client';
 
 has 'passphrase' => ( is => 'ro', isa => 'Str', required => 0 );
@@ -196,7 +199,7 @@ __END__
 
 =head1 NAME
 
-Net::Amazon::S3::GPG - Use GPG with Amazon S3 - Simple Storage Service
+Net::Amazon::S3::Client::GPG - Use GPG with Amazon S3 - Simple Storage Service
 
 =head1 SYNOPSIS
 
@@ -227,7 +230,7 @@ Net::Amazon::S3::GPG - Use GPG with Amazon S3 - Simple Storage Service
 
   # then can call $object->gpg_get, $object->gpg_get_filename,
   # $object->gpg_put, $object->$gpg_put_filename on
-  # Net::Amazon::S3::Object objects.
+  # Net::Amazon::S3::Client::Object objects.
 
 =head1 DESCRIPTION
 
@@ -240,7 +243,7 @@ while in transit over the internet, but Amazon recommends that
 so that the data cannot be accessed or tampered with by
 unauthorized parties".
 
-This module adds methods to L<Net::Amazon::S3::Object> to get
+This module adds methods to L<Net::Amazon::S3::Client::Object> to get
 and put values and files while encrypting and decrypting them.
 
 =head1 AUTHOR

@@ -1,5 +1,6 @@
 NAME
-    Net::Amazon::S3::GPG - Use GPG with Amazon S3 - Simple Storage Service
+    Net::Amazon::S3::Client::GPG - Use GPG with Amazon S3 - Simple Storage
+    Service
 
 SYNOPSIS
       use Net::Amazon::S3;
@@ -29,7 +30,7 @@ SYNOPSIS
 
       # then can call $object->gpg_get, $object->gpg_get_filename,
       # $object->gpg_put, $object->$gpg_put_filename on
-      # Net::Amazon::S3::Object objects.
+      # Net::Amazon::S3::Client::Object objects.
 
 DESCRIPTION
     Net::Amazon::S3 provides a simple interface to Amazon's Simple Storage
@@ -40,8 +41,8 @@ DESCRIPTION
     before it is uploaded to Amazon S3 so that the data cannot be accessed
     or tampered with by unauthorized parties".
 
-    This module adds methods to Net::Amazon::S3::Object to get and put
-    values and files while encrypting and decrypting them.
+    This module adds methods to Net::Amazon::S3::Client::Object to get and
+    put values and files while encrypting and decrypting them.
 
 AUTHOR
     Leon Brocard <acme@astray.com>.
